@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: ummid-document-management-system
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_NAME
+        value: Admin
+      - key: ADMIN_EMAIL
+        value: admin@example.com
+      - key: ADMIN_PASSWORD
+        value: Admin@12345
+      - key: MAX_UPLOAD_MB
+        value: 25
+      - key: GOOGLE_PARENT_FOLDER_ID
+        sync: false
+      - key: GOOGLE_CREDENTIALS
+        sync: false
