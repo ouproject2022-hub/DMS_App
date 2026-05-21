@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+  <div>
+    <h2 class="fw-bold mb-1">{{ SECTIONS[section].label }}</h2>
+    <p class="text-muted mb-0">Search and manage uploaded documents.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('export_documents', section=section) }}" class="btn btn-success"><i class="bi bi-file-earmark-excel"></i> Export Excel</a>
+    {% if current_user.role != 'viewer' %}
+    <a href="{{ url_for('upload', section=section) }}" class="btn btn-primary"><i class="bi bi-cloud-upload"></i> Upload</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <form class="row g-3" method="get">
+      <div class="col-md-5">
+        <input type="text" name="q" value="{{ request.args.get('q','') }}" class="form-control" placeholder="Search title, related name, filename or remarks">
+      </div>
+      <div class="col-md-3">
+        <select name="category" class="form-select">
+          <option value="">All Categories</option>
+          {% for cat in SECTIONS[section].categories %}
+          <option value="{{ cat }}" {% if request.args.get('category') == cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select name="year" class="form-select">
+          <option value="">All Years</option>
+          {% for y in years %}
+          <option value="{{ y }}" {% if request.args.get('year') == y %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-dark"><i class="bi bi-search"></i> Search</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>ID</th><th>Title</th><th>Category</th><th>Related Name</th><th>Year</th><th>File</th><th>Uploaded By</th><th>Uploaded At</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        {% for doc in docs %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><strong>{{ doc.document_title }}</strong><br><small class="text-muted">{{ doc.remarks or '' }}</small></td>
+          <td>{{ doc.document_category }}</td>
+          <td>{{ doc.related_name or '-' }}</td>
+          <td>{{ doc.year }}</td>
+          <td>{{ doc.file_name }}</td>
+          <td>{{ doc.uploaded_by }}</td>
+          <td>{{ doc.uploaded_at.strftime('%d-%m-%Y %I:%M %p') }}</td>
+          <td><a href="{{ doc.google_drive_file_link }}" target="_blank" class="btn btn-sm btn-outline-primary">Open Drive</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center text-muted p-4">No documents found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

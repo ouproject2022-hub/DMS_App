@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white py-3"><h5 class="fw-bold mb-0">Create User</h5></div>
+      <div class="card-body">
+        <form method="post">
+          <div class="mb-3"><label class="form-label">Name</label><input name="name" class="form-control" required></div>
+          <div class="mb-3"><label class="form-label">Email</label><input type="email" name="email" class="form-control" required></div>
+          <div class="mb-3"><label class="form-label">Password</label><input type="password" name="password" class="form-control" required></div>
+          <div class="mb-3">
+            <label class="form-label">Role</label>
+            <select name="role" class="form-select">
+              {% for key, label in ROLE_LABELS.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            </select>
+          </div>
+          <button class="btn btn-primary w-100">Create User</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white py-3"><h5 class="fw-bold mb-0">Users</h5></div>
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Created</th></tr></thead>
+          <tbody>
+            {% for user in users %}
+            <tr><td>{{ user.name }}</td><td>{{ user.email }}</td><td>{{ ROLE_LABELS.get(user.role, user.role) }}</td><td>{{ user.created_at.strftime('%d-%m-%Y') }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
