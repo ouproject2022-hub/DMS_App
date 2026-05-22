@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import traceback
 from datetime import datetime
 from functools import wraps
 
@@ -673,9 +674,134 @@ def health():
     return {"status": "ok", "app": "Ummid Document Management System"}
 
 
+# ========================
+# SAFE SQLITE -> POSTGRESQL MIGRATION
+# ========================
+def should_run_sqlite_migration():
+    return os.environ.get("RUN_SQLITE_MIGRATION", "false").strip().lower() in ("1", "true", "yes", "y")
+
+
+def get_sqlite_migration_path():
+    return os.environ.get("SQLITE_MIGRATION_PATH", os.path.join(BASE_DIR, "documents.db")).strip()
+
+
+def migrate_sqlite_to_current_database():
+    """Safely copy old local SQLite records into the current DATABASE_URL database.
+    Existing content is preserved. Duplicate records are skipped.
+    """
+    if not should_run_sqlite_migration():
+        print("SQLite migration skipped. RUN_SQLITE_MIGRATION is not true.")
+        return
+
+    current_database_url = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+    if current_database_url.startswith("sqlite"):
+        print("SQLite migration skipped because current database is SQLite.")
+        return
+
+    sqlite_path = get_sqlite_migration_path()
+    if not os.path.exists(sqlite_path):
+        print(f"SQLite migration skipped. File not found: {sqlite_path}")
+        return
+
+    try:
+        import sqlite3
+        conn = sqlite3.connect(sqlite_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        table_names = {row["name"] for row in cursor.fetchall()}
+
+        migrated_users = 0
+        migrated_folders = 0
+        migrated_documents = 0
+
+        if "user" in table_names:
+            for row in cursor.execute("SELECT * FROM user"):
+                email = (row["email"] or "").strip().lower()
+                if email and not User.query.filter_by(email=email).first():
+                    user = User(
+                        name=row["name"],
+                        email=email,
+                        password_hash=row["password_hash"],
+                        role=row["role"] or "viewer",
+                        created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.utcnow()
+                    )
+                    db.session.add(user)
+                    migrated_users += 1
+
+        if "drive_folder" in table_names:
+            for row in cursor.execute("SELECT * FROM drive_folder"):
+                existing = DriveFolder.query.filter_by(
+                    section=row["section"],
+                    category=row["category"],
+                    year=str(row["year"]),
+                    folder_name=row["folder_name"]
+                ).first()
+                if not existing:
+                    folder = DriveFolder(
+                        section=row["section"],
+                        category=row["category"],
+                        year=str(row["year"]),
+                        folder_name=row["folder_name"],
+                        google_drive_folder_id=row["google_drive_folder_id"],
+                        created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.utcnow()
+                    )
+                    db.session.add(folder)
+                    migrated_folders += 1
+
+        if "document" in table_names:
+            for row in cursor.execute("SELECT * FROM document"):
+                existing = Document.query.filter_by(
+                    section=row["section"],
+                    document_category=row["document_category"],
+                    document_title=row["document_title"],
+                    year=str(row["year"]),
+                    file_name=row["file_name"]
+                ).first()
+                if not existing:
+                    doc = Document(
+                        section=row["section"],
+                        document_category=row["document_category"],
+                        document_title=row["document_title"],
+                        related_name=row["related_name"],
+                        year=str(row["year"]),
+                        file_name=row["file_name"],
+                        file_mime_type=row["file_mime_type"],
+                        file_size=row["file_size"],
+                        google_drive_file_id=row["google_drive_file_id"],
+                        google_drive_file_link=row["google_drive_file_link"],
+                        google_drive_folder_id=row["google_drive_folder_id"],
+                        uploaded_by=row["uploaded_by"],
+                        uploaded_at=datetime.fromisoformat(row["uploaded_at"]) if row["uploaded_at"] else datetime.utcnow(),
+                        remarks=row["remarks"]
+                    )
+                    db.session.add(doc)
+                    migrated_documents += 1
+
+        db.session.commit()
+        conn.close()
+        print(f"SQLite migration completed. Users: {migrated_users}, Folders: {migrated_folders}, Documents: {migrated_documents}")
+    except Exception as exc:
+        db.session.rollback()
+        print(f"SQLite migration failed but app startup will continue: {exc}")
+        traceback.print_exc()
+
+
+def initialize_database_safely():
+    try:
+        db.create_all()
+        create_default_admin()
+        migrate_sqlite_to_current_database()
+    except Exception as exc:
+        print(f"Database startup initialization failed: {exc}")
+        traceback.print_exc()
+        if os.environ.get("ALLOW_START_WITH_DB_ERROR", "false").strip().lower() not in ("1", "true", "yes", "y"):
+            raise
+
+
 with app.app_context():
-    db.create_all()
-    create_default_admin()
+    initialize_database_safely()
 
 
 if __name__ == "__main__":
