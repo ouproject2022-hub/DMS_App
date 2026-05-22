@@ -27,13 +27,14 @@
               <input type="text" name="title" class="form-control" placeholder="Example: GST Certificate / School Registration / PAN Card" required>
             </div>
             <div class="col-md-12">
-              <label class="form-label">Related Name</label>
-              <input type="text" name="related_name" class="form-control" placeholder="Person, school, company, donor, customer, etc.">
+              <label class="form-label">Company Name <span class="text-danger">*</span></label>
+              <input type="text" name="related_name" class="form-control" placeholder="Enter company name" required>
+              <div class="form-text">Google Drive folder will be created based on Company Name + Year.</div>
             </div>
             <div class="col-md-12">
-              <label class="form-label">Choose File <span class="text-danger">*</span></label>
-              <input type="file" name="file" class="form-control" required>
-              <div class="form-text">Allowed: PDF, JPG, PNG, DOC, DOCX, XLS, XLSX, CSV, TXT</div>
+              <label class="form-label">Choose Files <span class="text-danger">*</span></label>
+              <input type="file" name="files" class="form-control" multiple required>
+              <div class="form-text">Allowed: PDF, JPG, PNG, DOC, DOCX, XLS, XLSX, CSV, TXT, PPT, PPTX</div>
             </div>
             <div class="col-md-12">
               <label class="form-label">Remarks</label>
