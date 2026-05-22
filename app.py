@@ -7,7 +7,7 @@ from functools import wraps
 from dotenv import load_dotenv
 from flask import (
     Flask, render_template, request, redirect, url_for, flash,
-    send_file, abort
+    send_file, abort, session
 )
 from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
@@ -17,6 +17,9 @@ from flask_bcrypt import Bcrypt
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.utils import secure_filename
 from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import pandas as pd
@@ -170,23 +173,51 @@ def admin_required(func):
     return wrapper
 
 
-def get_drive_service():
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS", "").strip()
-    if not creds_json:
-        raise RuntimeError("GOOGLE_CREDENTIALS environment variable is missing.")
+def get_oauth_client_config():
+    oauth_json = os.environ.get("GOOGLE_OAUTH_CLIENT_JSON", "").strip()
+    if not oauth_json:
+        raise RuntimeError("GOOGLE_OAUTH_CLIENT_JSON environment variable is missing.")
 
     try:
-        creds_dict = json.loads(creds_json)
+        config = json.loads(oauth_json)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("GOOGLE_CREDENTIALS is not valid JSON.") from exc
+        raise RuntimeError("GOOGLE_OAUTH_CLIENT_JSON is not valid JSON.") from exc
 
-    if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    if "web" not in config and "installed" not in config:
+        raise RuntimeError("GOOGLE_OAUTH_CLIENT_JSON must be an OAuth Client JSON, not a Service Account JSON.")
 
-    creds = service_account.Credentials.from_service_account_info(
-        creds_dict,
-        scopes=SCOPES
-    )
+    return config
+
+
+def credentials_to_session_dict(creds):
+    return {
+        "token": creds.token,
+        "refresh_token": creds.refresh_token,
+        "token_uri": creds.token_uri,
+        "client_id": creds.client_id,
+        "client_secret": creds.client_secret,
+        "scopes": creds.scopes
+    }
+
+
+def get_google_credentials():
+    token_data = session.get("google_token")
+    if not token_data:
+        return None
+
+    creds = Credentials(**token_data)
+
+    if creds.expired and creds.refresh_token:
+        creds.refresh(GoogleAuthRequest())
+        session["google_token"] = credentials_to_session_dict(creds)
+
+    return creds
+
+
+def get_drive_service():
+    creds = get_google_credentials()
+    if not creds:
+        raise RuntimeError("Google Drive is not authorized. Please connect Google Drive again.")
     return build("drive", "v3", credentials=creds)
 
 
@@ -206,7 +237,9 @@ def find_folder(service, name, parent_id):
         q=query,
         spaces="drive",
         fields="files(id, name)",
-        pageSize=1
+        pageSize=1,
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
     ).execute()
     files = result.get("files", [])
     return files[0]["id"] if files else None
@@ -219,7 +252,11 @@ def create_folder(service, name, parent_id=None):
     }
     if parent_id:
         metadata["parents"] = [parent_id]
-    folder = service.files().create(body=metadata, fields="id").execute()
+    folder = service.files().create(
+        body=metadata,
+        fields="id",
+        supportsAllDrives=True
+    ).execute()
     return folder["id"]
 
 
@@ -278,7 +315,8 @@ def upload_file_to_drive(file_storage, folder_id):
     uploaded = service.files().create(
         body=metadata,
         media_body=media,
-        fields="id, webViewLink"
+        fields="id, webViewLink",
+        supportsAllDrives=True
     ).execute()
     return uploaded
 
@@ -305,6 +343,59 @@ def inject_globals():
         "user_allowed_sections": user_allowed_sections,
         "current_year": datetime.now().year
     }
+
+
+@app.route("/authorize")
+@login_required
+def authorize():
+    session["oauth_next_url"] = request.args.get("next") or url_for("dashboard")
+
+    flow = Flow.from_client_config(
+        get_oauth_client_config(),
+        scopes=SCOPES,
+        redirect_uri=url_for("oauth2callback", _external=True)
+    )
+
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent"
+    )
+
+    session["oauth_state"] = state
+    return redirect(auth_url)
+
+
+@app.route("/oauth2callback")
+@login_required
+def oauth2callback():
+    state = session.get("oauth_state")
+    if not state:
+        flash("Google authorization session expired. Please connect Google Drive again.", "danger")
+        return redirect(url_for("dashboard"))
+
+    flow = Flow.from_client_config(
+        get_oauth_client_config(),
+        scopes=SCOPES,
+        state=state,
+        redirect_uri=url_for("oauth2callback", _external=True)
+    )
+
+    flow.fetch_token(authorization_response=request.url)
+    session["google_token"] = credentials_to_session_dict(flow.credentials)
+
+    flash("Google Drive connected successfully.", "success")
+    next_url = session.pop("oauth_next_url", url_for("dashboard"))
+    return redirect(next_url)
+
+
+@app.route("/disconnect-google-drive")
+@login_required
+def disconnect_google_drive():
+    session.pop("google_token", None)
+    session.pop("oauth_state", None)
+    flash("Google Drive disconnected from this login session.", "info")
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/")
@@ -425,6 +516,10 @@ def upload(section):
             return redirect(url_for("documents", section=section))
 
         try:
+            if "google_token" not in session:
+                flash("Please connect Google Drive once, then upload the document again.", "warning")
+                return redirect(url_for("authorize", next=request.url))
+
             service = get_drive_service()
             folder_id = get_document_folder(service, section, category, year)
             # Upload uses a fresh stream, because get_document_folder uses only metadata.
