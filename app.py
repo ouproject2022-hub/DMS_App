@@ -37,7 +37,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "25")) * 1024 * 1024
 
-ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "doc", "docx", "xls", "xlsx", "csv", "txt"}
+ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "doc", "docx", "xls", "xlsx", "csv", "txt", "ppt", "pptx"}
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 GOOGLE_PARENT_FOLDER_ID = os.environ.get("GOOGLE_PARENT_FOLDER_ID", "").strip()
 
@@ -267,39 +267,45 @@ def find_or_create_folder(service, name, parent_id=None):
     return create_folder(service, name, parent_id)
 
 
-def get_document_folder(service, section, category, year):
+def get_document_folder(service, section, category, company_name, year):
     if not GOOGLE_PARENT_FOLDER_ID:
         raise RuntimeError("GOOGLE_PARENT_FOLDER_ID environment variable is missing.")
 
     root_id = GOOGLE_PARENT_FOLDER_ID
     section_name = section_label(section)
+    clean_company_name = secure_filename(company_name).replace("_", " ").strip() or "Company"
+    company_year_folder = f"{clean_company_name} - {year}"
+
     section_id = find_or_create_folder(service, section_name, root_id)
     category_id = find_or_create_folder(service, category, section_id)
-    year_id = find_or_create_folder(service, str(year), category_id)
+    company_year_id = find_or_create_folder(service, company_year_folder, category_id)
+    folder_path = f"{section_name}/{category}/{company_year_folder}"
 
     existing = DriveFolder.query.filter_by(
         section=section,
         category=category,
-        year=str(year)
+        year=str(year),
+        folder_name=folder_path
     ).first()
     if not existing:
         db.session.add(DriveFolder(
             section=section,
             category=category,
             year=str(year),
-            folder_name=f"{section_name}/{category}/{year}",
-            google_drive_folder_id=year_id
+            folder_name=folder_path,
+            google_drive_folder_id=company_year_id
         ))
         db.session.commit()
-    elif existing.google_drive_folder_id != year_id:
-        existing.google_drive_folder_id = year_id
+    elif existing.google_drive_folder_id != company_year_id:
+        existing.google_drive_folder_id = company_year_id
         db.session.commit()
 
-    return year_id
+    return company_year_id
 
 
-def upload_file_to_drive(file_storage, folder_id):
-    service = get_drive_service()
+def upload_file_to_drive(file_storage, folder_id, service=None):
+    if service is None:
+        service = get_drive_service()
     filename = secure_filename(file_storage.filename)
     file_stream = io.BytesIO(file_storage.read())
     file_stream.seek(0)
@@ -485,35 +491,43 @@ def upload(section):
     if request.method == "POST":
         category = request.form.get("category", "").strip()
         title = request.form.get("title", "").strip()
-        related_name = request.form.get("related_name", "").strip()
+        company_name = request.form.get("company_name", "").strip() or request.form.get("related_name", "").strip()
+        related_name = company_name
         year = request.form.get("year", str(datetime.now().year)).strip()
         remarks = request.form.get("remarks", "").strip()
-        file = request.files.get("file")
+        uploaded_files = request.files.getlist("files") or request.files.getlist("file")
+        uploaded_files = [item for item in uploaded_files if item and item.filename]
 
-        if not category or not title or not year:
-            flash("Category, title and year are required.", "danger")
+        if not category or not title or not company_name or not year:
+            flash("Category, title, company name and year are required.", "danger")
             return redirect(request.url)
         if category not in SECTIONS[section]["categories"]:
             flash("Invalid category selected.", "danger")
             return redirect(request.url)
-        if not file or not file.filename:
-            flash("Please select a file.", "danger")
-            return redirect(request.url)
-        if not allowed_file(file.filename):
-            flash("File type is not allowed.", "danger")
+        if not uploaded_files:
+            flash("Please select at least one file.", "danger")
             return redirect(request.url)
 
-        safe_name = secure_filename(file.filename)
-        duplicate = Document.query.filter_by(
-            section=section,
-            document_category=category,
-            document_title=title,
-            year=year,
-            file_name=safe_name
-        ).first()
-        if duplicate:
-            flash("Duplicate document found. Same title, category, year and file name already exist.", "warning")
-            return redirect(url_for("documents", section=section))
+        safe_names = []
+        for upload_item in uploaded_files:
+            if not allowed_file(upload_item.filename):
+                flash(f"File type is not allowed: {upload_item.filename}", "danger")
+                return redirect(request.url)
+            safe_name = secure_filename(upload_item.filename)
+            if safe_name in safe_names:
+                flash(f"Duplicate file selected: {safe_name}", "warning")
+                return redirect(request.url)
+            safe_names.append(safe_name)
+            duplicate = Document.query.filter_by(
+                section=section,
+                document_category=category,
+                document_title=title,
+                year=year,
+                file_name=safe_name
+            ).first()
+            if duplicate:
+                flash(f"Duplicate document found: {safe_name}. Same title, category, year and file name already exist.", "warning")
+                return redirect(url_for("documents", section=section))
 
         try:
             if "google_token" not in session:
@@ -521,28 +535,31 @@ def upload(section):
                 return redirect(url_for("authorize", next=request.url))
 
             service = get_drive_service()
-            folder_id = get_document_folder(service, section, category, year)
-            # Upload uses a fresh stream, because get_document_folder uses only metadata.
-            uploaded = upload_file_to_drive(file, folder_id)
+            folder_id = get_document_folder(service, section, category, company_name, year)
 
-            doc = Document(
-                section=section,
-                document_category=category,
-                document_title=title,
-                related_name=related_name,
-                year=year,
-                file_name=safe_name,
-                file_mime_type=file.mimetype,
-                file_size=request.content_length,
-                google_drive_file_id=uploaded["id"],
-                google_drive_file_link=uploaded.get("webViewLink", f"https://drive.google.com/file/d/{uploaded['id']}/view"),
-                google_drive_folder_id=folder_id,
-                uploaded_by=current_user.email,
-                remarks=remarks
-            )
-            db.session.add(doc)
+            for file, safe_name in zip(uploaded_files, safe_names):
+                file.stream.seek(0)
+                uploaded = upload_file_to_drive(file, folder_id, service=service)
+
+                doc = Document(
+                    section=section,
+                    document_category=category,
+                    document_title=title,
+                    related_name=related_name,
+                    year=year,
+                    file_name=safe_name,
+                    file_mime_type=file.mimetype,
+                    file_size=request.content_length,
+                    google_drive_file_id=uploaded["id"],
+                    google_drive_file_link=uploaded.get("webViewLink", f"https://drive.google.com/file/d/{uploaded['id']}/view"),
+                    google_drive_folder_id=folder_id,
+                    uploaded_by=current_user.email,
+                    remarks=remarks
+                )
+                db.session.add(doc)
+
             db.session.commit()
-            flash("Document uploaded successfully to Google Drive.", "success")
+            flash(f"{len(uploaded_files)} document(s) uploaded successfully to Google Drive.", "success")
             return redirect(url_for("documents", section=section))
         except Exception as exc:
             db.session.rollback()
@@ -568,7 +585,7 @@ def export_documents(section):
             "Section": section_label(doc.section),
             "Category": doc.document_category,
             "Document Title": doc.document_title,
-            "Related Name": doc.related_name or "",
+            "Company Name": doc.related_name or "",
             "Year": doc.year,
             "File Name": doc.file_name,
             "Google Drive Link": doc.google_drive_file_link,
