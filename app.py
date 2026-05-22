@@ -245,6 +245,23 @@ def find_folder(service, name, parent_id):
     return files[0]["id"] if files else None
 
 
+def drive_file_exists_in_folder(service, filename, folder_id):
+    safe_filename = drive_query_escape(filename)
+    query = (
+        f"name='{safe_filename}' and '{folder_id}' in parents "
+        f"and trashed=false and mimeType!='application/vnd.google-apps.folder'"
+    )
+    result = service.files().list(
+        q=query,
+        spaces="drive",
+        fields="files(id, name)",
+        pageSize=1,
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
+    return bool(result.get("files", []))
+
+
 def create_folder(service, name, parent_id=None):
     metadata = {
         "name": name,
@@ -548,6 +565,11 @@ def upload(section):
 
             service = get_drive_service()
             folder_id = get_document_folder(service, section, category, company_name, year)
+
+            for safe_name in safe_names:
+                if drive_file_exists_in_folder(service, safe_name, folder_id):
+                    flash(f"This file already exist: {safe_name}", "danger")
+                    return redirect(request.url)
 
             for file, safe_name in zip(uploaded_files, safe_names):
                 file.stream.seek(0)
