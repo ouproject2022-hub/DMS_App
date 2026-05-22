@@ -11,24 +11,24 @@
   {% for card in cards %}
   <div class="col-md-4">
     <div class="card h-100 border-0 shadow-sm section-card">
-      <div class="card-body p-4">
-        <div class="d-flex justify-content-between align-items-start mb-3">
-          <div class="section-icon bg-white rounded-circle shadow-sm d-flex align-items-center justify-content-center" style="height:64px;width:64px;overflow:hidden;">
+      <div class="card-body p-5 text-center">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+          <div class="section-icon bg-white rounded-circle shadow-sm d-flex align-items-center justify-content-center" style="height:180px;width:180px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.08)!important;margin:0 auto;">
             {% if card.key == 'ummid_ngo' %}
-              <img src="{{ url_for('static', filename='logos/ummid.png') }}" alt="Ummid Logo" style="height:52px;width:52px;object-fit:contain;" onerror="this.outerHTML='<i class=&quot;bi bi-folder-check&quot;></i>'">
+              <img src="{{ url_for('static', filename='logos/ummid.png') }}" alt="Ummid Logo" style="height:150px;width:150px;object-fit:contain;" onerror="this.outerHTML='<i class=&quot;bi bi-folder-check&quot;></i>'">
             {% elif card.key == 'mahalaxmi_trader' %}
-              <img src="{{ url_for('static', filename='logos/mahalaxmi.png') }}" alt="Mahalaxmi Logo" style="height:52px;width:52px;object-fit:contain;" onerror="this.outerHTML='<i class=&quot;bi bi-folder-check&quot;></i>'">
+              <img src="{{ url_for('static', filename='logos/mahalaxmi.png') }}" alt="Mahalaxmi Logo" style="height:150px;width:150px;object-fit:contain;" onerror="this.outerHTML='<i class=&quot;bi bi-folder-check&quot;></i>'">
             {% elif card.key == 'personal' %}
-              <img src="{{ url_for('static', filename='logos/personal.png') }}" alt="Personal Documents Logo" style="height:52px;width:52px;object-fit:contain;" onerror="this.outerHTML='<i class=&quot;bi bi-folder-check&quot;></i>'">
+              <img src="{{ url_for('static', filename='logos/personal.png') }}" alt="Personal Documents Logo" style="height:150px;width:150px;object-fit:contain;" onerror="this.outerHTML='<i class=&quot;bi bi-folder-check&quot;></i>'">
             {% else %}
               <i class="bi bi-folder-check"></i>
             {% endif %}
           </div>
           <span class="badge text-bg-primary rounded-pill">{{ card.total }} Files</span>
         </div>
-        <h4 class="fw-bold">{{ card.label }}</h4>
+        <h3 class="fw-bold mb-3">{{ card.label }}</h3>
         <p class="text-muted">Upload, view, search and export documents.</p>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-3 justify-content-center mt-4">
           <a href="{{ url_for('documents', section=card.key) }}" class="btn btn-outline-primary">View</a>
           {% if current_user.role != 'viewer' %}
           <a href="{{ url_for('upload', section=card.key) }}" class="btn btn-primary">Upload</a>
