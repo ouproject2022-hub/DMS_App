@@ -13,7 +13,17 @@
     <div class="card h-100 border-0 shadow-sm section-card">
       <div class="card-body p-4">
         <div class="d-flex justify-content-between align-items-start mb-3">
-          <div class="section-icon"><i class="bi bi-folder-check"></i></div>
+          <div class="section-icon bg-white rounded-circle shadow-sm d-flex align-items-center justify-content-center" style="height:64px;width:64px;overflow:hidden;">
+            {% if card.key == 'ummid_ngo' %}
+              <img src="{{ url_for('static', filename='logos/ummid.png') }}" alt="Ummid Logo" style="height:52px;width:52px;object-fit:contain;" onerror="this.outerHTML='<i class=&quot;bi bi-folder-check&quot;></i>'">
+            {% elif card.key == 'mahalaxmi_trader' %}
+              <img src="{{ url_for('static', filename='logos/mahalaxmi.png') }}" alt="Mahalaxmi Logo" style="height:52px;width:52px;object-fit:contain;" onerror="this.outerHTML='<i class=&quot;bi bi-folder-check&quot;></i>'">
+            {% elif card.key == 'personal' %}
+              <img src="{{ url_for('static', filename='logos/personal.png') }}" alt="Personal Documents Logo" style="height:52px;width:52px;object-fit:contain;" onerror="this.outerHTML='<i class=&quot;bi bi-folder-check&quot;></i>'">
+            {% else %}
+              <i class="bi bi-folder-check"></i>
+            {% endif %}
+          </div>
           <span class="badge text-bg-primary rounded-pill">{{ card.total }} Files</span>
         </div>
         <h4 class="fw-bold">{{ card.label }}</h4>

@@ -11,8 +11,9 @@
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
   <div class="container-fluid">
-    <a class="navbar-brand fw-bold" href="{{ url_for('dashboard') if current_user.is_authenticated else url_for('login') }}">
-      <i class="bi bi-folder2-open"></i> Ummid DMS
+    <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="{{ url_for('dashboard') if current_user.is_authenticated else url_for('login') }}">
+      <img src="{{ url_for('static', filename='logos/ummid.png') }}" alt="Ummid Logo" style="height:32px;width:32px;object-fit:contain;" onerror="this.style.display='none'">
+      <span><i class="bi bi-folder2-open"></i> Ummid DMS</span>
     </a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsExample">
       <span class="navbar-toggler-icon"></span>
@@ -22,7 +23,18 @@
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a></li>
         {% for key in user_allowed_sections(current_user) %}
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('documents', section=key) }}">{{ SECTIONS[key].label }}</a></li>
+        <li class="nav-item">
+          <a class="nav-link d-flex align-items-center gap-1" href="{{ url_for('documents', section=key) }}">
+            {% if key == 'ummid_ngo' %}
+              <img src="{{ url_for('static', filename='logos/ummid.png') }}" alt="Ummid Logo" style="height:20px;width:20px;object-fit:contain;" onerror="this.style.display='none'">
+            {% elif key == 'mahalaxmi_trader' %}
+              <img src="{{ url_for('static', filename='logos/mahalaxmi.png') }}" alt="Mahalaxmi Logo" style="height:20px;width:20px;object-fit:contain;" onerror="this.style.display='none'">
+            {% elif key == 'personal' %}
+              <img src="{{ url_for('static', filename='logos/personal.png') }}" alt="Personal Documents Logo" style="height:20px;width:20px;object-fit:contain;" onerror="this.style.display='none'">
+            {% endif %}
+            <span>{{ SECTIONS[key].label }}</span>
+          </a>
+        </li>
         {% endfor %}
         {% if current_user.role == 'admin' %}
         <li class="nav-item"><a class="nav-link" href="{{ url_for('users') }}">Users</a></li>
