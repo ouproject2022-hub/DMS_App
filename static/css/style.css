@@ -9,3 +9,40 @@ body { background: #f5f7fb; }
 .table th { white-space: nowrap; }
 .btn { border-radius: 10px; }
 .form-control, .form-select { border-radius: 10px; }
+
+/* Enhanced dashboard/logo styling */
+.main-navbar {
+  padding-top: .7rem;
+  padding-bottom: .7rem;
+}
+
+.navbar-brand {
+  font-size: 1.35rem;
+}
+
+.navbar-nav .nav-link {
+  font-size: 1.05rem;
+}
+
+.section-card {
+  border-radius: 28px;
+  min-height: 360px;
+}
+
+.section-card .badge {
+  font-size: 1rem;
+  padding: .55rem .9rem;
+}
+
+.section-card .text-muted {
+  font-size: 1.05rem;
+}
+
+.section-card .btn {
+  padding: .65rem 1.2rem;
+  font-weight: 600;
+}
+
+.section-icon {
+  background: #fff !important;
+}
