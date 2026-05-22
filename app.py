@@ -267,6 +267,10 @@ def find_or_create_folder(service, name, parent_id=None):
     return create_folder(service, name, parent_id)
 
 
+def get_drive_folder_link(folder_id):
+    return f"https://drive.google.com/drive/folders/{folder_id}" if folder_id else "#"
+
+
 def get_document_folder(service, section, category, company_name, year):
     if not GOOGLE_PARENT_FOLDER_ID:
         raise RuntimeError("GOOGLE_PARENT_FOLDER_ID environment variable is missing.")
@@ -347,7 +351,8 @@ def inject_globals():
         "ROLE_LABELS": ROLE_LABELS,
         "section_label": section_label,
         "user_allowed_sections": user_allowed_sections,
-        "current_year": datetime.now().year
+        "current_year": datetime.now().year,
+        "related_name_label": "Company Name"
     }
 
 
@@ -473,8 +478,15 @@ def documents(section):
         query = query.filter_by(year=year)
 
     docs = query.order_by(Document.uploaded_at.desc()).all()
+
+    # Show the Company Name + Year Google Drive folder when clicking "Open Drive".
+    # Existing database column name is kept unchanged for compatibility with current templates.
+    for doc in docs:
+        if doc.google_drive_folder_id:
+            doc.google_drive_file_link = get_drive_folder_link(doc.google_drive_folder_id)
+
     years = [row[0] for row in db.session.query(Document.year).filter_by(section=section).distinct().order_by(Document.year.desc()).all()]
-    return render_template("documents.html", docs=docs, section=section, years=years)
+    return render_template("documents.html", docs=docs, section=section, years=years, related_name_label="Company Name")
 
 
 @app.route("/upload/<section>", methods=["GET", "POST"])
@@ -551,7 +563,7 @@ def upload(section):
                     file_mime_type=file.mimetype,
                     file_size=request.content_length,
                     google_drive_file_id=uploaded["id"],
-                    google_drive_file_link=uploaded.get("webViewLink", f"https://drive.google.com/file/d/{uploaded['id']}/view"),
+                    google_drive_file_link=get_drive_folder_link(folder_id),
                     google_drive_folder_id=folder_id,
                     uploaded_by=current_user.email,
                     remarks=remarks
@@ -588,7 +600,7 @@ def export_documents(section):
             "Company Name": doc.related_name or "",
             "Year": doc.year,
             "File Name": doc.file_name,
-            "Google Drive Link": doc.google_drive_file_link,
+            "Google Drive Link": get_drive_folder_link(doc.google_drive_folder_id),
             "Uploaded By": doc.uploaded_by,
             "Uploaded At": doc.uploaded_at.strftime("%d-%m-%Y %I:%M %p"),
             "Remarks": doc.remarks or ""
