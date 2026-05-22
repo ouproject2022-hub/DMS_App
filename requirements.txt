@@ -13,3 +13,6 @@ Flask-Login==0.6.3
 Flask-Bcrypt==1.0.1
 SQLAlchemy==2.0.30
 psycopg2-binary==2.9.9
+google-auth
+google-auth-oauthlib
+google-api-python-client
