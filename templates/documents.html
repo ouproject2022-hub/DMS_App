@@ -59,7 +59,16 @@
           <td>{{ doc.file_name }}</td>
           <td>{{ doc.uploaded_by }}</td>
           <td>{{ doc.uploaded_at.strftime('%d-%m-%Y %I:%M %p') }}</td>
-          <td><a href="https://drive.google.com/drive/folders/{{ doc.google_drive_folder_id }}" target="_blank" class="btn btn-sm btn-outline-primary">Open Drive</a></td>
+          <td>
+            <div class="d-flex gap-1">
+              <a href="https://drive.google.com/drive/folders/{{ doc.google_drive_folder_id }}" target="_blank" class="btn btn-sm btn-outline-primary">Open Drive</a>
+              {% if current_user.role != 'viewer' %}
+              <form method="POST" action="{{ url_for('delete_document', document_id=doc.id) }}" onsubmit="return confirm('Are you sure you want to delete this document? This will also remove the Google Drive file.');">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
         </tr>
         {% else %}
         <tr><td colspan="9" class="text-center text-muted p-4">No documents found.</td></tr>
