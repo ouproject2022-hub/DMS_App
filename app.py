@@ -217,9 +217,24 @@ def get_google_credentials():
 
 def get_drive_service():
     creds = get_google_credentials()
-    if not creds:
-        raise RuntimeError("Google Drive is not authorized. Please connect Google Drive again.")
-    return build("drive", "v3", credentials=creds)
+    if creds:
+        return build("drive", "v3", credentials=creds)
+
+    service_creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    if service_creds_json:
+        try:
+            creds_dict = json.loads(service_creds_json)
+            if "private_key" in creds_dict:
+                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            service_creds = service_account.Credentials.from_service_account_info(
+                creds_dict,
+                scopes=SCOPES
+            )
+            return build("drive", "v3", credentials=service_creds)
+        except Exception:
+            pass
+
+    raise RuntimeError("Google Drive is not authorized. Please connect Google Drive again.")
 
 
 def drive_query_escape(value):
@@ -668,61 +683,6 @@ def users():
     all_users = User.query.order_by(User.created_at.desc()).all()
     return render_template("users.html", users=all_users)
 
-
-
-
-@app.route("/delete-document/<int:document_id>", methods=["POST"])
-@login_required
-def delete_document(document_id):
-    document = Document.query.get_or_404(document_id)
-
-    if document.section not in user_allowed_sections(current_user):
-        abort(403)
-
-    if current_user.role == "viewer":
-        flash("Viewer role cannot delete documents.", "danger")
-        return redirect(url_for("documents", section=document.section))
-
-    try:
-        service = get_drive_service()
-
-        if document.google_drive_file_id:
-            try:
-                service.files().delete(
-                    fileId=document.google_drive_file_id,
-                    supportsAllDrives=True
-                ).execute()
-            except Exception:
-                pass
-
-        if document.google_drive_folder_id:
-            try:
-                remaining = service.files().list(
-                    q=f"'{document.google_drive_folder_id}' in parents and trashed=false",
-                    spaces="drive",
-                    fields="files(id)",
-                    pageSize=1,
-                    supportsAllDrives=True,
-                    includeItemsFromAllDrives=True
-                ).execute()
-
-                if not remaining.get("files"):
-                    service.files().delete(
-                        fileId=document.google_drive_folder_id,
-                        supportsAllDrives=True
-                    ).execute()
-            except Exception:
-                pass
-
-        db.session.delete(document)
-        db.session.commit()
-        flash("Document deleted successfully.", "success")
-
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Delete failed: {str(e)}", "danger")
-
-    return redirect(url_for("documents", section=document.section))
 
 @app.route("/health")
 def health():
