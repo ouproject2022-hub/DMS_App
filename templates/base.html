@@ -9,35 +9,35 @@
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm main-navbar">
+<nav class="navbar navbar-expand-lg navbar-dark shadow-sm main-navbar premium-navbar">
   <div class="container-fluid">
-    <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="{{ url_for('dashboard') if current_user.is_authenticated else url_for('login') }}">
-      <img src="{{ url_for('static', filename='logos/ummid.png') }}" alt="Ummid Logo" style="height:58px;width:58px;object-fit:contain;background:#fff;border-radius:50%;padding:6px;box-shadow:0 4px 14px rgba(0,0,0,.22);" onerror="this.style.display='none'">
-      <span><i class="bi bi-folder2-open"></i> Ummid DMS</span>
+    <a class="navbar-brand brand-wrap fw-bold d-flex align-items-center gap-2" href="{{ url_for('dashboard') if current_user.is_authenticated else url_for('login') }}">
+      <img class="brand-logo" src="{{ url_for('static', filename='logos/ummid.png') }}" alt="Ummid Logo" onerror="this.style.display='none'">
+      <span class="brand-title"><i class="bi bi-folder2-open"></i> Ummid DMS</span>
     </a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsExample">
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="navbarsExample">
       {% if current_user.is_authenticated %}
-      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a></li>
+      <ul class="navbar-nav nav-menu me-auto mb-2 mb-lg-0">
+        <li class="nav-item"><a class="nav-link nav-pill" href="{{ url_for('dashboard') }}"><span class="nav-logo-badge"><i class="bi bi-grid-3x3-gap-fill"></i></span><span>Dashboard</span></a></li>
         {% for key in user_allowed_sections(current_user) %}
         <li class="nav-item">
-          <a class="nav-link d-flex align-items-center gap-3 fw-semibold" href="{{ url_for('documents', section=key) }}">
+          <a class="nav-link nav-pill d-flex align-items-center gap-2 fw-semibold" href="{{ url_for('documents', section=key) }}">
             {% if key == 'ummid_ngo' %}
-              <img src="{{ url_for('static', filename='logos/ummid.png') }}" alt="Ummid Logo" style="height:48px;width:48px;object-fit:contain;background:#fff;border-radius:50%;padding:5px;box-shadow:0 4px 14px rgba(0,0,0,.22);" onerror="this.style.display='none'">
+              <img class="nav-menu-logo" src="{{ url_for('static', filename='logos/ummid.png') }}" alt="Ummid Logo" onerror="this.style.display='none'">
             {% elif key == 'mahalaxmi_trader' %}
-              <img src="{{ url_for('static', filename='logos/mahalaxmi.png') }}" alt="Mahalaxmi Logo" style="height:48px;width:48px;object-fit:contain;background:#fff;border-radius:50%;padding:5px;box-shadow:0 4px 14px rgba(0,0,0,.22);" onerror="this.style.display='none'">
+              <img class="nav-menu-logo" src="{{ url_for('static', filename='logos/mahalaxmi.png') }}" alt="Mahalaxmi Logo" onerror="this.style.display='none'">
             {% elif key == 'personal' %}
-              <img src="{{ url_for('static', filename='logos/personal.png') }}" alt="Personal Documents Logo" style="height:48px;width:48px;object-fit:contain;background:#fff;border-radius:50%;padding:5px;box-shadow:0 4px 14px rgba(0,0,0,.22);" onerror="this.style.display='none'">
+              <img class="nav-menu-logo" src="{{ url_for('static', filename='logos/personal.png') }}" alt="Personal Documents Logo" onerror="this.style.display='none'">
             {% endif %}
             <span>{{ SECTIONS[key].label }}</span>
           </a>
         </li>
         {% endfor %}
         {% if current_user.role == 'admin' %}
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('users') }}">Users</a></li>
+        <li class="nav-item"><a class="nav-link nav-pill" href="{{ url_for('users') }}"><img class="nav-menu-logo" src="{{ url_for('static', filename='logos/users.png') }}" alt="Users Logo" onerror="this.outerHTML='<span class=&quot;nav-logo-badge&quot;><i class=&quot;bi bi-people-fill&quot;></i></span>'"><span>Users</span></a></li>
         {% endif %}
       </ul>
       <div class="d-flex align-items-center gap-3 text-white">
