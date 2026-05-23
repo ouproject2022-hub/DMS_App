@@ -669,6 +669,61 @@ def users():
     return render_template("users.html", users=all_users)
 
 
+
+
+@app.route("/delete-document/<int:document_id>", methods=["POST"])
+@login_required
+def delete_document(document_id):
+    document = Document.query.get_or_404(document_id)
+
+    if document.section not in user_allowed_sections(current_user):
+        abort(403)
+
+    if current_user.role == "viewer":
+        flash("Viewer role cannot delete documents.", "danger")
+        return redirect(url_for("documents", section=document.section))
+
+    try:
+        service = get_drive_service()
+
+        if document.google_drive_file_id:
+            try:
+                service.files().delete(
+                    fileId=document.google_drive_file_id,
+                    supportsAllDrives=True
+                ).execute()
+            except Exception:
+                pass
+
+        if document.google_drive_folder_id:
+            try:
+                remaining = service.files().list(
+                    q=f"'{document.google_drive_folder_id}' in parents and trashed=false",
+                    spaces="drive",
+                    fields="files(id)",
+                    pageSize=1,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True
+                ).execute()
+
+                if not remaining.get("files"):
+                    service.files().delete(
+                        fileId=document.google_drive_folder_id,
+                        supportsAllDrives=True
+                    ).execute()
+            except Exception:
+                pass
+
+        db.session.delete(document)
+        db.session.commit()
+        flash("Document deleted successfully.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Delete failed: {str(e)}", "danger")
+
+    return redirect(url_for("documents", section=document.section))
+
 @app.route("/health")
 def health():
     return {"status": "ok", "app": "Ummid Document Management System"}
