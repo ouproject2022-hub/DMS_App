@@ -215,24 +215,32 @@ def get_google_credentials():
     return creds
 
 
+def get_service_account_drive_service():
+    service_creds_json = os.environ.get("GOOGLE_CREDENTIALS", "").strip()
+    if not service_creds_json:
+        return None
+
+    try:
+        creds_dict = json.loads(service_creds_json)
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        service_creds = service_account.Credentials.from_service_account_info(
+            creds_dict,
+            scopes=SCOPES
+        )
+        return build("drive", "v3", credentials=service_creds)
+    except Exception as exc:
+        raise RuntimeError(f"Google Drive service account authorization failed: {exc}")
+
+
 def get_drive_service():
+    service = get_service_account_drive_service()
+    if service:
+        return service
+
     creds = get_google_credentials()
     if creds:
         return build("drive", "v3", credentials=creds)
-
-    service_creds_json = os.environ.get("GOOGLE_CREDENTIALS", "").strip()
-    if service_creds_json:
-        try:
-            creds_dict = json.loads(service_creds_json)
-            if "private_key" in creds_dict:
-                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-            service_creds = service_account.Credentials.from_service_account_info(
-                creds_dict,
-                scopes=SCOPES
-            )
-            return build("drive", "v3", credentials=service_creds)
-        except Exception as exc:
-            raise RuntimeError(f"Google Drive service account authorization failed: {exc}")
 
     raise RuntimeError("Google Drive is not authorized. Please connect Google Drive again.")
 
@@ -575,10 +583,6 @@ def upload(section):
                 return redirect(url_for("documents", section=section))
 
         try:
-            if "google_token" not in session:
-                flash("Please connect Google Drive once, then upload the document again.", "warning")
-                return redirect(url_for("authorize", next=request.url))
-
             service = get_drive_service()
             folder_id = get_document_folder(service, section, category, company_name, year)
 
@@ -681,7 +685,30 @@ def delete_document(document_id):
             except Exception as exc:
                 message = str(exc)
                 if "404" not in message and "File not found" not in message:
-                    raise
+                    try:
+                        oauth_creds = get_google_credentials()
+                        if oauth_creds:
+                            oauth_service = build("drive", "v3", credentials=oauth_creds)
+                            oauth_service.files().delete(
+                                fileId=document.google_drive_file_id,
+                                supportsAllDrives=True
+                            ).execute()
+                        else:
+                            raise
+                    except Exception:
+                        if "insufficientFilePermissions" in message or "does not have sufficient permissions" in message:
+                            try:
+                                if document.google_drive_folder_id:
+                                    service.files().update(
+                                        fileId=document.google_drive_file_id,
+                                        removeParents=document.google_drive_folder_id,
+                                        fields="id",
+                                        supportsAllDrives=True
+                                    ).execute()
+                            except Exception:
+                                pass
+                        else:
+                            raise
 
         folder_id = document.google_drive_folder_id
         remaining_document = Document.query.filter(
