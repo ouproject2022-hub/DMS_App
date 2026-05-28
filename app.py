@@ -41,6 +41,7 @@ app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "25")) * 
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "doc", "docx", "xls", "xlsx", "csv", "txt", "ppt", "pptx"}
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 GOOGLE_PARENT_FOLDER_ID = os.environ.get("GOOGLE_PARENT_FOLDER_ID", "").strip()
+CENTRAL_DRIVE_EMAIL = os.environ.get("CENTRAL_DRIVE_EMAIL", "ouproject2022@gmail.com").strip().lower()
 
 SECTIONS = {
     "ummid_ngo": {
@@ -128,6 +129,13 @@ class Document(db.Model):
     remarks = db.Column(db.Text, nullable=True)
 
 
+class AppSetting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    value = db.Column(db.Text, nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -201,8 +209,7 @@ def credentials_to_session_dict(creds):
     }
 
 
-def get_google_credentials():
-    token_data = session.get("google_token")
+def build_credentials_from_token_data(token_data):
     if not token_data:
         return None
 
@@ -210,7 +217,59 @@ def get_google_credentials():
 
     if creds.expired and creds.refresh_token:
         creds.refresh(GoogleAuthRequest())
+
+    return creds
+
+
+def get_google_credentials():
+    token_data = session.get("google_token")
+    creds = build_credentials_from_token_data(token_data)
+
+    if creds and creds.expired is False:
         session["google_token"] = credentials_to_session_dict(creds)
+
+    return creds
+
+
+def get_app_setting(key):
+    setting = AppSetting.query.filter_by(key=key).first()
+    return setting.value if setting else None
+
+
+def set_app_setting(key, value):
+    setting = AppSetting.query.filter_by(key=key).first()
+    if not setting:
+        setting = AppSetting(key=key, value=value)
+        db.session.add(setting)
+    else:
+        setting.value = value
+    db.session.commit()
+
+
+def get_central_drive_token_data():
+    token_json = os.environ.get("CENTRAL_GOOGLE_DRIVE_TOKEN_JSON", "").strip()
+    if not token_json:
+        token_json = os.environ.get("GOOGLE_DRIVE_TOKEN_JSON", "").strip()
+    if token_json:
+        return json.loads(token_json)
+
+    stored_token = get_app_setting("central_google_drive_token")
+    if stored_token:
+        return json.loads(stored_token)
+
+    return None
+
+
+def save_central_drive_token(creds):
+    set_app_setting("central_google_drive_token", json.dumps(credentials_to_session_dict(creds)))
+
+
+def get_central_drive_credentials():
+    token_data = get_central_drive_token_data()
+    creds = build_credentials_from_token_data(token_data)
+
+    if creds and creds.refresh_token and not os.environ.get("CENTRAL_GOOGLE_DRIVE_TOKEN_JSON", "").strip() and not os.environ.get("GOOGLE_DRIVE_TOKEN_JSON", "").strip():
+        save_central_drive_token(creds)
 
     return creds
 
@@ -234,16 +293,19 @@ def get_service_account_drive_service():
 
 
 def get_drive_service():
-    service = get_service_account_drive_service()
-    if service:
-        return service
+    central_creds = get_central_drive_credentials()
+    if central_creds:
+        return build("drive", "v3", credentials=central_creds)
 
     creds = get_google_credentials()
     if creds:
         return build("drive", "v3", credentials=creds)
 
-    raise RuntimeError("Google Drive is not authorized. Please connect Google Drive again.")
+    service = get_service_account_drive_service()
+    if service:
+        return service
 
+    raise RuntimeError("Google Drive is not authorized. Please connect Google Drive again.")
 
 def drive_query_escape(value):
     return value.replace("'", "\\'")
@@ -436,7 +498,11 @@ def oauth2callback():
     flow.fetch_token(authorization_response=request.url)
     session["google_token"] = credentials_to_session_dict(flow.credentials)
 
-    flash("Google Drive connected successfully.", "success")
+    if current_user.role == "admin" or current_user.email.strip().lower() == CENTRAL_DRIVE_EMAIL:
+        save_central_drive_token(flow.credentials)
+        flash("Central Google Drive connected successfully for uploads and delete operations.", "success")
+    else:
+        flash("Google Drive connected successfully.", "success")
     next_url = session.pop("oauth_next_url", url_for("dashboard"))
     return redirect(next_url)
 
