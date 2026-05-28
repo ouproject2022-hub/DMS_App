@@ -492,6 +492,37 @@ def authorize():
     return redirect(auth_url)
 
 
+
+
+@app.route("/authorize-central-drive")
+@app.route("/connect-central-drive")
+@login_required
+def authorize_central_drive():
+    """Hidden route to connect the central Google Drive storage account.
+    This does not change the existing app login flow. It only saves the
+    Google Drive OAuth token for CENTRAL_DRIVE_EMAIL so all uploads/deletes
+    can use the central Drive storage account.
+    """
+    session["oauth_next_url"] = request.args.get("next") or url_for("dashboard")
+    session["central_drive_authorization"] = True
+
+    flow = Flow.from_client_config(
+        get_oauth_client_config(),
+        scopes=SCOPES,
+        redirect_uri=url_for("oauth2callback", _external=True)
+    )
+
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent select_account",
+        login_hint=CENTRAL_DRIVE_EMAIL
+    )
+
+    session["oauth_state"] = state
+    return redirect(auth_url)
+
+
 @app.route("/oauth2callback")
 @login_required
 def oauth2callback():
@@ -511,11 +542,16 @@ def oauth2callback():
     session["google_token"] = credentials_to_session_dict(flow.credentials)
 
     connected_email = get_drive_account_email(flow.credentials)
+    is_central_authorization = session.pop("central_drive_authorization", False)
+
     if connected_email == CENTRAL_DRIVE_EMAIL:
         save_central_drive_token(flow.credentials)
         flash("Central Google Drive connected successfully for uploads and delete operations.", "success")
+    elif is_central_authorization:
+        flash(f"Central Google Drive was not connected. Please choose {CENTRAL_DRIVE_EMAIL} on the Google account selection screen.", "danger")
     else:
         flash("Google Drive connected successfully. Central storage is not changed because this is not the central Drive account.", "success")
+
     next_url = session.pop("oauth_next_url", url_for("dashboard"))
     return redirect(next_url)
 
