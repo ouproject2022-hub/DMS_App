@@ -231,6 +231,15 @@ def get_google_credentials():
     return creds
 
 
+def get_drive_account_email(creds):
+    try:
+        service = build("drive", "v3", credentials=creds)
+        about = service.about().get(fields="user(emailAddress)").execute()
+        return (about.get("user", {}).get("emailAddress") or "").strip().lower()
+    except Exception:
+        return ""
+
+
 def get_app_setting(key):
     setting = AppSetting.query.filter_by(key=key).first()
     return setting.value if setting else None
@@ -293,19 +302,22 @@ def get_service_account_drive_service():
 
 
 def get_drive_service():
+    # Drive upload/delete is centralized through the OAuth token of CENTRAL_DRIVE_EMAIL.
+    # Do not fall back to Service Account here because personal Gmail folders cannot use
+    # Service Account storage quota. Do not fall back to each user's token because that
+    # would again consume the uploader's personal Drive quota.
     central_creds = get_central_drive_credentials()
-    if central_creds:
+    if central_creds and central_creds.valid:
         return build("drive", "v3", credentials=central_creds)
 
     creds = get_google_credentials()
-    if creds:
-        return build("drive", "v3", credentials=creds)
+    if creds and creds.valid:
+        connected_email = get_drive_account_email(creds)
+        if connected_email == CENTRAL_DRIVE_EMAIL:
+            save_central_drive_token(creds)
+            return build("drive", "v3", credentials=creds)
 
-    service = get_service_account_drive_service()
-    if service:
-        return service
-
-    raise RuntimeError("Google Drive is not authorized. Please connect Google Drive again.")
+    raise RuntimeError(f"Central Google Drive is not connected. Please login/connect once with {CENTRAL_DRIVE_EMAIL}.")
 
 def drive_query_escape(value):
     return value.replace("'", "\\'")
@@ -498,11 +510,12 @@ def oauth2callback():
     flow.fetch_token(authorization_response=request.url)
     session["google_token"] = credentials_to_session_dict(flow.credentials)
 
-    if current_user.role == "admin" or current_user.email.strip().lower() == CENTRAL_DRIVE_EMAIL:
+    connected_email = get_drive_account_email(flow.credentials)
+    if connected_email == CENTRAL_DRIVE_EMAIL:
         save_central_drive_token(flow.credentials)
         flash("Central Google Drive connected successfully for uploads and delete operations.", "success")
     else:
-        flash("Google Drive connected successfully.", "success")
+        flash("Google Drive connected successfully. Central storage is not changed because this is not the central Drive account.", "success")
     next_url = session.pop("oauth_next_url", url_for("dashboard"))
     return redirect(next_url)
 
@@ -751,30 +764,7 @@ def delete_document(document_id):
             except Exception as exc:
                 message = str(exc)
                 if "404" not in message and "File not found" not in message:
-                    try:
-                        oauth_creds = get_google_credentials()
-                        if oauth_creds:
-                            oauth_service = build("drive", "v3", credentials=oauth_creds)
-                            oauth_service.files().delete(
-                                fileId=document.google_drive_file_id,
-                                supportsAllDrives=True
-                            ).execute()
-                        else:
-                            raise
-                    except Exception:
-                        if "insufficientFilePermissions" in message or "does not have sufficient permissions" in message:
-                            try:
-                                if document.google_drive_folder_id:
-                                    service.files().update(
-                                        fileId=document.google_drive_file_id,
-                                        removeParents=document.google_drive_folder_id,
-                                        fields="id",
-                                        supportsAllDrives=True
-                                    ).execute()
-                            except Exception:
-                                pass
-                        else:
-                            raise
+                    raise
 
         folder_id = document.google_drive_folder_id
         remaining_document = Document.query.filter(
